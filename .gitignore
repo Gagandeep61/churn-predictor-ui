@@ -1,0 +1,13 @@
+# Folders to ignore
+.ipynb_checkpoints/
+data/
+saved_models/
+
+# Files to ignore
+churn_prediction.ipynb
+Untitled.ipynb
+*.ipynb
+
+# API files (since they are on Hugging Face)
+app.py
+requirements.txt

@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Churn Predictor</title>
+  <!--
+    WHY single HTML file for Vercel?
+    - Zero build step: No npm install, no Next.js, no bundler
+    - Just drag-and-drop to Vercel → live in 30 seconds
+    - Vercel auto-serves static HTML files perfectly
+    - Perfect for ML projects where UI is simple
+
+    ARCHITECTURE:
+    [User fills form] → [JS calls HuggingFace API] → [Shows result]
+    No backend on Vercel — it only serves this HTML file.
+    All ML logic lives on HuggingFace.
+  -->
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --card:      #1e293b;
+      --card2:     #273344;
+      --border:    #334155;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --accent:    #6366f1;
+      --accent2:   #818cf8;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #f59e0b;
+      --radius:    12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 900px; margin: 0 auto; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366f1, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    .header p { color: var(--muted); font-size: 0.95rem; }
+
+    /* ── API Config Banner ── */
+    .api-banner {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .api-banner label { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+    .api-banner input {
+      flex: 1;
+      min-width: 200px;
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+      font-family: monospace;
+    }
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+    .status-dot.online  { background: var(--green); }
+    .status-dot.offline { background: var(--red); }
+
+    /* ── Form Card ── */
+    .form-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    @media (max-width: 600px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* ── Form Fields ── */
+    .field { display: flex; flex-direction: column; gap: 0.35rem; }
+    .field label { font-size: 0.8rem; color: var(--muted); }
+    .field select, .field input[type="number"] {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.6rem 0.75rem;
+      font-size: 0.9rem;
+      transition: border-color 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .field select:focus, .field input[type="number"]:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .field select option { background: var(--card2); }
+
+    /* ── Submit Button ── */
+    .submit-btn {
+      width: 100%;
+      padding: 0.85rem;
+      margin-top: 1.5rem;
+      background: linear-gradient(135deg, #6366f1, #818cf8);
+      border: none;
+      border-radius: var(--radius);
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .submit-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Result Card ── */
+    .result-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    .result-card.visible { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    .result-main {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .verdict-badge {
+      font-size: 1.3rem;
+      font-weight: 800;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .verdict-churn    { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .verdict-nochurn  { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+
+    .verdict-detail h3 { font-size: 1rem; margin-bottom: 0.2rem; }
+    .verdict-detail p  { font-size: 0.85rem; color: var(--muted); }
+
+    /* ── Probability Bar ── */
+    .prob-section { margin-bottom: 1.25rem; }
+    .prob-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      margin-bottom: 0.4rem;
+    }
+    .prob-bar-bg {
+      background: var(--card2);
+      border-radius: 999px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .prob-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.6s ease;
+    }
+
+    /* ── Risk Badge ── */
+    .risk-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .risk-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .risk-Low    { background: rgba(34,197,94,0.15);  color: #22c55e; }
+    .risk-Medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .risk-High   { background: rgba(239,68,68,0.15);  color: #ef4444; }
+
+    /* ── Error Banner ── */
+    .error-banner {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      color: #ef4444;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      display: none;
+      margin-top: 1rem;
+    }
+    .error-banner.visible { display: block; }
+
+    /* ── Loader ── */
+    .loader {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .gap-section { margin-top: 1.5rem; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>🔁 Churn Predictor</h1>
+      <p>Predict telecom customer churn using XGBoost. Powered by HuggingFace API.</p>
+    </div>
+
+    <!-- API URL Config -->
+    <!--
+      WHY let user configure API URL:
+      Your HuggingFace Space URL is unique to your account.
+      Rather than hardcoding it, we let user paste it in.
+      localStorage saves it so they don't retype every time.
+    -->
+    <div class="api-banner">
+      <div class="status-dot" id="statusDot"></div>
+      <label for="apiUrl">HuggingFace API URL:</label>
+      <input type="text" id="apiUrl"
+             placeholder="https://your-username-space-name.hf.space"
+             oninput="saveApiUrl()" />
+    </div>
+
+    <!-- Form -->
+    <div class="form-card">
+      <div class="section-title">👤 Demographics</div>
+      <div class="grid-3">
+        <div class="field">
+          <label>Gender</label>
+          <select id="gender">
+            <option>Male</option>
+            <option>Female</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Senior Citizen</label>
+          <select id="SeniorCitizen">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Partner</label>
+          <select id="Partner">
+            <option>Yes</option>
+            <option>No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Dependents</label>
+          <select id="Dependents">
+            <option>No</option>
+            <option>Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tenure (months)</label>
+          <input type="number" id="tenure" value="12" min="0" max="72" />
+        </div>
+      </div>
+
+      <div class="section-title gap-section">📡 Services</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Phone Service</label>
+          <select id="PhoneService">
+            <option>Yes</option>
+            <option>No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Multiple Lines</label>
+          <select id="MultipleLines">
+            <option>No</option>
+            <option>Yes</option>
+            <option>No phone service</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Internet Service</label>
+          <select id="InternetService">
+            <option>Fiber optic</option>
+            <option>DSL</option>
+            <option>No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Online Security</label>
+          <select id="OnlineSecurity">
+            <option>No</option>
+            <option>Yes</option>
+            <option>No internet service</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Online Backup</label>
+          <select id="OnlineBackup">
+            <option>Yes</option>
+            <option>No</option>
+            <option>No internet service</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Device Protection</label>
+          <select id="DeviceProtection">
+            <option>No</option>
+            <option>Yes</option>
+            <option>No internet service</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tech Support</label>
+          <select id="TechSupport">
+            <option>No</option>
+            <option>Yes</option>
+            <option>No internet service</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Streaming TV</label>
+          <select id="StreamingTV">
+            <option>No</option>
+            <option>Yes</option>
+            <option>No internet service</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Streaming Movies</label>
+          <select id="StreamingMovies">
+            <option>No</option>
+            <option>Yes</option>
+            <option>No internet service</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-title gap-section">💳 Billing</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Contract Type</label>
+          <select id="Contract">
+            <option>Month-to-month</option>
+            <option>One year</option>
+            <option>Two year</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Paperless Billing</label>
+          <select id="PaperlessBilling">
+            <option>Yes</option>
+            <option>No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Payment Method</label>
+          <select id="PaymentMethod">
+            <option>Electronic check</option>
+            <option>Mailed check</option>
+            <option>Bank transfer (automatic)</option>
+            <option>Credit card (automatic)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Monthly Charges ($)</label>
+          <input type="number" id="MonthlyCharges" value="70.35" step="0.01" min="0" />
+        </div>
+        <div class="field">
+          <label>Total Charges ($)</label>
+          <input type="number" id="TotalCharges" value="844.20" step="0.01" min="0" />
+        </div>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="predict()">
+        Predict Churn Risk
+      </button>
+      <div class="error-banner" id="errorBanner"></div>
+    </div>
+
+    <!-- Result -->
+    <div class="result-card" id="resultCard">
+      <div class="section-title">📊 Prediction Result</div>
+
+      <div class="result-main">
+        <div class="verdict-badge" id="verdictBadge">—</div>
+        <div class="verdict-detail">
+          <h3 id="verdictTitle">—</h3>
+          <p id="verdictDesc">—</p>
+        </div>
+      </div>
+
+      <div class="prob-section">
+        <div class="prob-label">
+          <span>Churn Probability</span>
+          <span id="probText">—</span>
+        </div>
+        <div class="prob-bar-bg">
+          <div class="prob-bar-fill" id="probBar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="risk-row">
+        Risk Level:
+        <span class="risk-badge" id="riskBadge">—</span>
+        <span id="riskDesc" style="color: var(--muted)">—</span>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+
+  <script>
+    // ── Persist API URL in localStorage ──────────────────────────────────────
+    // WHY localStorage: Saves URL so user doesn't retype on refresh
+    // NOTE: localStorage is unavailable in Claude artifacts, but works perfectly
+    //       on Vercel (real browser environment)
+    const apiInput = document.getElementById('apiUrl');
+
+    // Load saved URL on page open
+    const savedUrl = localStorage.getItem('hf_api_url');
+    if (savedUrl) {
+      apiInput.value = savedUrl;
+      checkApiHealth(savedUrl);
+    }
+
+    function saveApiUrl() {
+      const url = apiInput.value.trim().replace(/\/$/, '');  // Remove trailing slash
+      localStorage.setItem('hf_api_url', url);
+    }
+
+    // ── API Health Check ──────────────────────────────────────────────────────
+    // WHY: Show green/red dot so user knows if HF Space is awake
+    // HF Spaces sleep after inactivity — first request can take 20-30s to wake
+    async function checkApiHealth(url) {
+      const dot = document.getElementById('statusDot');
+      try {
+        const res = await fetch(`${url}/health`, { method: 'GET' });
+        dot.className = res.ok ? 'status-dot online' : 'status-dot offline';
+      } catch {
+        dot.className = 'status-dot offline';
+      }
+    }
+
+    // Check health when URL changes (debounced)
+    let healthTimer;
+    apiInput.addEventListener('input', () => {
+      clearTimeout(healthTimer);
+      healthTimer = setTimeout(() => {
+        const url = apiInput.value.trim().replace(/\/$/, '');
+        if (url) checkApiHealth(url);
+      }, 800);
+    });
+
+    // ── Prediction ────────────────────────────────────────────────────────────
+    async function predict() {
+      const btn     = document.getElementById('submitBtn');
+      const errDiv  = document.getElementById('errorBanner');
+      const result  = document.getElementById('resultCard');
+
+      // Get API URL
+      const apiUrl = apiInput.value.trim().replace(/\/$/, '');
+      if (!apiUrl) {
+        showError('Please enter your HuggingFace Space URL above.');
+        return;
+      }
+
+      // Build payload
+      // WHY parseFloat/parseInt: HTML inputs are strings, API expects numbers
+      const payload = {
+        gender:           document.getElementById('gender').value,
+        SeniorCitizen:    parseInt(document.getElementById('SeniorCitizen').value),
+        Partner:          document.getElementById('Partner').value,
+        Dependents:       document.getElementById('Dependents').value,
+        tenure:           parseInt(document.getElementById('tenure').value),
+        PhoneService:     document.getElementById('PhoneService').value,
+        MultipleLines:    document.getElementById('MultipleLines').value,
+        InternetService:  document.getElementById('InternetService').value,
+        OnlineSecurity:   document.getElementById('OnlineSecurity').value,
+        OnlineBackup:     document.getElementById('OnlineBackup').value,
+        DeviceProtection: document.getElementById('DeviceProtection').value,
+        TechSupport:      document.getElementById('TechSupport').value,
+        StreamingTV:      document.getElementById('StreamingTV').value,
+        StreamingMovies:  document.getElementById('StreamingMovies').value,
+        Contract:         document.getElementById('Contract').value,
+        PaperlessBilling: document.getElementById('PaperlessBilling').value,
+        PaymentMethod:    document.getElementById('PaymentMethod').value,
+        MonthlyCharges:   parseFloat(document.getElementById('MonthlyCharges').value),
+        TotalCharges:     parseFloat(document.getElementById('TotalCharges').value),
+      };
+
+      // Loading state
+      btn.disabled = true;
+      btn.innerHTML = '<span class="loader"></span>Predicting...';
+      errDiv.classList.remove('visible');
+      result.classList.remove('visible');
+
+      try {
+        // Call HuggingFace API
+        // WHY Content-Type: application/json — FastAPI expects JSON body
+        const response = await fetch(`${apiUrl}/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || `HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        showResult(data);
+
+      } catch (err) {
+        let msg = err.message;
+        if (msg.includes('Failed to fetch')) {
+          msg = 'Could not reach HuggingFace Space. Make sure the URL is correct and the Space is awake. Try opening the URL in a new tab first.';
+        }
+        showError(msg);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Predict Churn Risk';
+      }
+    }
+
+    // ── Display Result ────────────────────────────────────────────────────────
+    function showResult(data) {
+      const isChurn = data.prediction === 1;
+      const prob    = data.probability;
+      const pct     = (prob * 100).toFixed(1);
+
+      // Verdict badge
+      const badge = document.getElementById('verdictBadge');
+      badge.textContent    = data.churn_label;
+      badge.className      = `verdict-badge ${isChurn ? 'verdict-churn' : 'verdict-nochurn'}`;
+
+      document.getElementById('verdictTitle').textContent = isChurn
+        ? 'Customer likely to churn'
+        : 'Customer likely to stay';
+
+      document.getElementById('verdictDesc').textContent = isChurn
+        ? 'Consider a retention offer: discount, upgrade, or personal outreach.'
+        : 'No immediate action needed. Continue monitoring.';
+
+      // Probability bar
+      const barColor = prob > 0.6 ? '#ef4444' : prob > 0.3 ? '#f59e0b' : '#22c55e';
+      document.getElementById('probText').textContent = `${pct}%`;
+      const bar = document.getElementById('probBar');
+      bar.style.width      = `${pct}%`;
+      bar.style.background = barColor;
+
+      // Risk badge
+      const riskBadge = document.getElementById('riskBadge');
+      riskBadge.textContent = data.risk_level;
+      riskBadge.className   = `risk-badge risk-${data.risk_level}`;
+
+      const riskDescs = {
+        Low:    'No action needed',
+        Medium: 'Send a retention offer',
+        High:   'Urgent: personal outreach'
+      };
+      document.getElementById('riskDesc').textContent = riskDescs[data.risk_level] || '';
+
+      document.getElementById('resultCard').classList.add('visible');
+    }
+
+    // ── Show Error ────────────────────────────────────────────────────────────
+    function showError(msg) {
+      const errDiv = document.getElementById('errorBanner');
+      errDiv.textContent = '⚠️ ' + msg;
+      errDiv.classList.add('visible');
+    }
+  </script>
+</body>
+</html>

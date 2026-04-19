@@ -61,37 +61,7 @@
     .header p { color: var(--muted); font-size: 0.95rem; }
 
     /* ── API Config Banner ── */
-    .api-banner {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1rem 1.25rem;
-      margin-bottom: 1.5rem;
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .api-banner label { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
-    .api-banner input {
-      flex: 1;
-      min-width: 200px;
-      background: var(--card2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: 0.5rem 0.75rem;
-      font-size: 0.85rem;
-      font-family: monospace;
-    }
-    .status-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--muted);
-      flex-shrink: 0;
-    }
-    .status-dot.online  { background: var(--green); }
-    .status-dot.offline { background: var(--red); }
+
 
     /* ── Form Card ── */
     .form-card {
@@ -264,20 +234,7 @@
       <p>Predict telecom customer churn using XGBoost. Powered by HuggingFace API.</p>
     </div>
 
-    <!-- API URL Config -->
-    <!--
-      WHY let user configure API URL:
-      Your HuggingFace Space URL is unique to your account.
-      Rather than hardcoding it, we let user paste it in.
-      localStorage saves it so they don't retype every time.
-    -->
-    <div class="api-banner">
-      <div class="status-dot" id="statusDot"></div>
-      <label for="apiUrl">HuggingFace API URL:</label>
-      <input type="text" id="apiUrl"
-             placeholder="https://your-username-space-name.hf.space"
-             oninput="saveApiUrl()" />
-    </div>
+
 
     <!-- Form -->
     <div class="form-card">
@@ -466,46 +423,8 @@
   </div><!-- /container -->
 
   <script>
-    // ── Persist API URL in localStorage ──────────────────────────────────────
-    // WHY localStorage: Saves URL so user doesn't retype on refresh
-    // NOTE: localStorage is unavailable in Claude artifacts, but works perfectly
-    //       on Vercel (real browser environment)
-    const apiInput = document.getElementById('apiUrl');
-
-    // Load saved URL on page open
-    const savedUrl = localStorage.getItem('hf_api_url');
-    if (savedUrl) {
-      apiInput.value = savedUrl;
-      checkApiHealth(savedUrl);
-    }
-
-    function saveApiUrl() {
-      const url = apiInput.value.trim().replace(/\/$/, '');  // Remove trailing slash
-      localStorage.setItem('hf_api_url', url);
-    }
-
-    // ── API Health Check ──────────────────────────────────────────────────────
-    // WHY: Show green/red dot so user knows if HF Space is awake
-    // HF Spaces sleep after inactivity — first request can take 20-30s to wake
-    async function checkApiHealth(url) {
-      const dot = document.getElementById('statusDot');
-      try {
-        const res = await fetch(`${url}/health`, { method: 'GET' });
-        dot.className = res.ok ? 'status-dot online' : 'status-dot offline';
-      } catch {
-        dot.className = 'status-dot offline';
-      }
-    }
-
-    // Check health when URL changes (debounced)
-    let healthTimer;
-    apiInput.addEventListener('input', () => {
-      clearTimeout(healthTimer);
-      healthTimer = setTimeout(() => {
-        const url = apiInput.value.trim().replace(/\/$/, '');
-        if (url) checkApiHealth(url);
-      }, 800);
-    });
+    // Hardcoded HuggingFace API URL
+    const API_URL = 'https://gagan61-churn-predictor-api.hf.space';
 
     // ── Prediction ────────────────────────────────────────────────────────────
     async function predict() {
@@ -514,11 +433,7 @@
       const result  = document.getElementById('resultCard');
 
       // Get API URL
-      const apiUrl = apiInput.value.trim().replace(/\/$/, '');
-      if (!apiUrl) {
-        showError('Please enter your HuggingFace Space URL above.');
-        return;
-      }
+      const apiUrl = API_URL;
 
       // Build payload
       // WHY parseFloat/parseInt: HTML inputs are strings, API expects numbers

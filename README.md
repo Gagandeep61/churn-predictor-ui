@@ -76,4 +76,4 @@ Open to feedback and improvements! Feel free to open issues or PRs.
 ---
 
 ## 📧 Contact
-Gagandeep Singh | [LinkedIn](www.linkedin.com/in/gagandeep-singh-517155319) | [Email](mailto:gmadaan450@gmail.com)
+Gagandeep Singh | [LinkedIn](https://www.linkedin.com/in/gagandeep-singh-517155319) | [Email](mailto:gmadaan450@gmail.com)
